@@ -121,6 +121,15 @@
                         <span>Random អាយុ</span>
                     </button>
 
+                    <button id="saveDataBtn" class="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-3.5 py-2 rounded-xl transition text-xs sm:text-sm shadow-sm">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        <span>រក្សាទុកទិន្នន័យ</span>
+                    </button>
+
+                    <button id="resetDataBtn" title="លុបទិន្នន័យដែលបានរក្សាទុក" class="inline-flex items-center gap-1.5 bg-white hover:bg-rose-50 text-rose-600 border border-slate-300 hover:border-rose-200 font-medium px-3 py-2 rounded-xl transition text-xs sm:text-sm">
+                        <i class="fa-solid fa-rotate-left"></i>
+                    </button>
+
                     <button id="exportBtn" class="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white font-medium px-3.5 py-2 rounded-xl transition text-xs sm:text-sm">
                         <i class="fa-solid fa-download"></i>
                         <span>ទាញយក CSV</span>
@@ -301,8 +310,11 @@
         });
 
         // Sample initial dataset including Village, Commune, District (ភូមិ, ឃុំ, ស្រុក)
+        const STORAGE_KEY = "stau_volunteer_saved_data_v1";
+        let currentFileName = "ទិន្នន័យគំរូ";
+        let isRealData = false;
         let originalHeaders = ["ឈ្មោះ", "ភេទ", "ភូមិ", "ឃុំ", "ស្រុក"];
-        let youthData = [
+        const defaultYouthData = [
             { name: "សុខ ចាន់ណា", gender: "ស្រី", location: "ភូមិស្តៅ, ឃុំស្តៅ, ស្រុករតនមណ្ឌល", rawRow: { "ឈ្មោះ": "សុខ ចាន់ណា", "ភេទ": "ស្រី", "ភូមិ": "ស្តៅ", "ឃុំ": "ស្តៅ", "ស្រុក": "រតនមណ្ឌល" } },
             { name: "កែវ វិសាល", gender: "ប្រុស", location: "ភូមិបឹងអំពិល, ឃុំស្តៅ, ស្រុករតនមណ្ឌល", rawRow: { "ឈ្មោះ": "កែវ វិសាល", "ភេទ": "ប្រុស", "ភូមិ": "បឹងអំពិល", "ឃុំ": "ស្តៅ", "ស្រុក": "រតនមណ្ឌល" } },
             { name: "លី សុភា", gender: "ស្រី", location: "ភូមិបវេល, ឃុំបវេល, ស្រុកបវេល", rawRow: { "ឈ្មោះ": "លី សុភា", "ភេទ": "ស្រី", "ភូមិ": "បវេល", "ឃុំ": "បវេល", "ស្រុក": "បវេល" } },
@@ -314,7 +326,7 @@
             { name: "អ៊ុក ស្រីមុំ", gender: "ស្រី", location: "ភូមិអូរដា, ឃុំស្តៅ, ស្រុករតនមណ្ឌល", rawRow: { "ឈ្មោះ": "អ៊ុក ស្រីមុំ", "ភេទ": "ស្រី", "ភូមិ": "អូរដា", "ឃុំ": "ស្តៅ", "ស្រុក": "រតនមណ្ឌល" } },
             { name: "ឈុន បញ្ញា", gender: "ប្រុស", location: "ភូមិខ្នាចរមាស, ឃុំខ្នាចរមាស, ស្រុកបវេល", rawRow: { "ឈ្មោះ": "ឈុន បញ្ញា", "ភេទ": "ប្រុស", "ភូមិ": "ខ្នាចរមាស", "ឃុំ": "ខ្នាចរមាស", "ស្រុក": "បវេល" } }
         ];
-
+        let youthData = [...defaultYouthData];
         let nameAgeChartInstance = null;
         let locationChartInstance = null;
 
@@ -421,20 +433,78 @@
 
                     if (parsedList.length > 0) {
                         youthData = parsedList;
-                        // Update banner UI to reflect real uploaded data
-                        document.getElementById('bannerTitle').textContent = fileName;
-                        document.getElementById('bannerSubtitle').textContent = `ឯកសារ៖ ${fileName} • សរុប ${youthData.length} នាក់ (អាយុ Random ១៩-៤០ ឆ្នាំ)`;
-                        const badge = document.getElementById('dataBadge');
-                        badge.textContent = "ទិន្នន័យពិត";
-                        badge.className = "px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200/70";
+                        currentFileName = fileName;
+                        isRealData = true;
+                        updateBannerStatus(fileName, true, false);
 
                         updateDashboard();
-                        showToast(`បានបញ្ចូលទិន្នន័យ ${youthData.length} នាក់ដោយជោគជ័យ!`);
+                        showToast(`បានផ្ទុកទិន្នន័យ ${youthData.length} នាក់! សូមចុច "រក្សាទុកទិន្នន័យ" ដើម្បីឱ្យជាប់ក្នុងប្រព័ន្ធ`);
                     } else {
                         showToast("មិនអាចស្វែងរកជួរឈរ 'ឈ្មោះ' ក្នុងឯកសារបានទេ!");
                     }
                 }
             });
+        }
+
+        // Update header badge and subtitle
+        function updateBannerStatus(fileName, realData, isSaved) {
+            const badge = document.getElementById('dataBadge');
+            if (realData) {
+                document.getElementById('bannerTitle').textContent = fileName;
+                document.getElementById('bannerSubtitle').textContent = `ឯកសារ៖ ${fileName} • សរុប ${youthData.length} នាក់ (អាយុ Random ១៩-៤០ ឆ្នាំ)`;
+                if (isSaved) {
+                    badge.innerHTML = `<i class="fa-solid fa-check mr-1"></i>បានរក្សាទុកជាប់ក្នុងប្រព័ន្ធ`;
+                    badge.className = "px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200/80";
+                } else {
+                    badge.textContent = "មិនទាន់បានរក្សាទុក";
+                    badge.className = "px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200/80";
+                }
+            } else {
+                document.getElementById('bannerTitle').textContent = "";
+                document.getElementById('bannerSubtitle').textContent = "កម្មវិធីការស្ម័គ្រចិត្តដើម្បីសហគមន៍ខ្ញុំ • ក្រាហ្វសសរ និងអាយុចៃដន្យ (១៩-៤០ ឆ្នាំ)";
+                badge.textContent = isSaved ? "ទិន្នន័យគំរូ (បានរក្សាទុក)" : "ទិន្នន័យគំរូ";
+                badge.className = "px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600";
+            }
+        }
+
+        // Save current dataset into localStorage so it stays permanently
+        function saveDataToBrowser() {
+            try {
+                const payload = {
+                    youthData,
+                    originalHeaders,
+                    currentFileName,
+                    isRealData,
+                    savedAt: new Date().toISOString()
+                };
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+                updateBannerStatus(currentFileName, isRealData, true);
+                showToast(`បានរក្សាទុកទិន្នន័យ (${youthData.length} នាក់) ជាប់ក្នុងប្រព័ន្ធដោយជោគជ័យ!`);
+            } catch (err) {
+                console.error(err);
+                showToast("មិនអាចរក្សាទុកបានទេ (ទំហំឯកសារធំពេក)!");
+            }
+        }
+
+        // Load saved dataset from localStorage if available
+        function loadSavedDataFromBrowser() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (parsed && Array.isArray(parsed.youthData) && parsed.youthData.length > 0) {
+                        youthData = parsed.youthData;
+                        originalHeaders = parsed.originalHeaders || originalHeaders;
+                        currentFileName = parsed.currentFileName || "ឯកសារដែលបានរក្សាទុក";
+                        isRealData = parsed.isRealData !== undefined ? parsed.isRealData : true;
+                        updateBannerStatus(currentFileName, isRealData, true);
+                        return true;
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to load saved data:", err);
+            }
+            return false;
         }
 
         // Handle File Upload (.csv or .zip)
@@ -749,6 +819,21 @@
         });
 
         // Event Listeners for interactive controls
+        document.getElementById('saveDataBtn').addEventListener('click', saveDataToBrowser);
+
+        document.getElementById('resetDataBtn').addEventListener('click', () => {
+            localStorage.removeItem(STORAGE_KEY);
+            youthData = [...defaultYouthData];
+            originalHeaders = ["ឈ្មោះ", "ភេទ", "ភូមិ", "ឃុំ", "ស្រុក"];
+            currentFileName = "ទិន្នន័យគំរូ";
+            isRealData = false;
+            document.getElementById('fileInput').value = "";
+            assignRandomAges();
+            updateBannerStatus(currentFileName, false, false);
+            updateDashboard();
+            showToast("បានសម្អាត និងត្រឡប់ទៅទិន្នន័យគំរូដើមវិញ!");
+        });
+
         document.getElementById('randomizeBtn').addEventListener('click', () => {
             assignRandomAges();
             updateDashboard();
@@ -761,7 +846,10 @@
 
         // Initialize on page load
         window.addEventListener('DOMContentLoaded', () => {
-            assignRandomAges();
+            const hasSaved = loadSavedDataFromBrowser();
+            if (!hasSaved) {
+                assignRandomAges();
+            }
             updateDashboard();
         });
     </script>
