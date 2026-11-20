@@ -122,11 +122,11 @@
                     </button>
 
                     <button id="saveDataBtn" class="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-3.5 py-2 rounded-xl transition text-xs sm:text-sm shadow-sm">
-                        <i class="fa-solid fa-floppy-disk"></i>
-                        <span>រក្សាទុកទិន្នន័យ</span>
+                        <i class="fa-solid fa-cloud-arrow-up"></i>
+                        <span>រក្សាទុកលើ Cloud</span>
                     </button>
 
-                    <button id="resetDataBtn" title="លុបទិន្នន័យដែលបានរក្សាទុក" class="inline-flex items-center gap-1.5 bg-white hover:bg-rose-50 text-rose-600 border border-slate-300 hover:border-rose-200 font-medium px-3 py-2 rounded-xl transition text-xs sm:text-sm">
+                    <button id="resetDataBtn" title="លុបទិន្នន័យលើ Cloud និងត្រឡប់ទៅគំរូដើម" class="inline-flex items-center gap-1.5 bg-white hover:bg-rose-50 text-rose-600 border border-slate-300 hover:border-rose-200 font-medium px-3 py-2 rounded-xl transition text-xs sm:text-sm">
                         <i class="fa-solid fa-rotate-left"></i>
                     </button>
 
@@ -273,7 +273,59 @@
         <span id="toastMessage">ជោគជ័យ!</span>
     </div>
 
-    <script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Initialize Cloud Database for cross-device sharing
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'stau-volunteer-default';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        let db = null;
+        let auth = null;
+        let currentUser = null;
+
+        async function initCloudSync() {
+            if (!firebaseConfig) return;
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    const cred = await signInWithCustomToken(auth, __initial_auth_token);
+                    currentUser = cred.user;
+                } else {
+                    const cred = await signInAnonymously(auth);
+                    currentUser = cred.user;
+                }
+
+                // Listen to shared public data so anyone with the link sees the uploaded file
+                const sharedDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'volunteer_dashboard', 'latest_dataset');
+                onSnapshot(sharedDocRef, (snapshot) => {
+                    if (snapshot.exists()) {
+                        const data = snapshot.data();
+                        if (data && data.youthDataJson) {
+                            const parsedYouth = JSON.parse(data.youthDataJson);
+                            const parsedHeaders = data.originalHeadersJson ? JSON.parse(data.originalHeadersJson) : originalHeaders;
+                            if (Array.isArray(parsedYouth) && parsedYouth.length > 0) {
+                                youthData = parsedYouth;
+                                originalHeaders = parsedHeaders;
+                                currentFileName = data.currentFileName || "ឯកសារដែលបានផ្ទុក";
+                                isRealData = data.isRealData !== undefined ? data.isRealData : true;
+                                updateBannerStatus(currentFileName, isRealData, true);
+                                updateDashboard();
+                            }
+                        }
+                    }
+                }, (error) => {
+                    console.error("Cloud sync listener error:", error);
+                });
+            } catch (err) {
+                console.error("Cloud initialization failed:", err);
+            }
+        }
+
         // --- Password Authentication Logic ---
         const REQUIRED_PASSWORD = "$printc++";
         const loginOverlay = document.getElementById('loginOverlay');
@@ -438,7 +490,8 @@
                         updateBannerStatus(fileName, true, false);
 
                         updateDashboard();
-                        showToast(`បានផ្ទុកទិន្នន័យ ${youthData.length} នាក់! សូមចុច "រក្សាទុកទិន្នន័យ" ដើម្បីឱ្យជាប់ក្នុងប្រព័ន្ធ`);
+                        // Automatically save to Cloud right after uploading so shared links show it immediately
+                        saveDataToCloud(true);
                     } else {
                         showToast("មិនអាចស្វែងរកជួរឈរ 'ឈ្មោះ' ក្នុងឯកសារបានទេ!");
                     }
@@ -453,58 +506,46 @@
                 document.getElementById('bannerTitle').textContent = fileName;
                 document.getElementById('bannerSubtitle').textContent = `ឯកសារ៖ ${fileName} • សរុប ${youthData.length} នាក់ (អាយុ Random ១៩-៤០ ឆ្នាំ)`;
                 if (isSaved) {
-                    badge.innerHTML = `<i class="fa-solid fa-check mr-1"></i>បានរក្សាទុកជាប់ក្នុងប្រព័ន្ធ`;
+                    badge.innerHTML = `<i class="fa-solid fa-cloud-check mr-1"></i>បានរក្សាទុកលើ Cloud (គ្រប់គ្នាមើលឃើញ)`;
                     badge.className = "px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200/80";
                 } else {
-                    badge.textContent = "មិនទាន់បានរក្សាទុក";
+                    badge.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i>កំពុងរក្សាទុក...`;
                     badge.className = "px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200/80";
                 }
             } else {
                 document.getElementById('bannerTitle').textContent = "";
                 document.getElementById('bannerSubtitle').textContent = "កម្មវិធីការស្ម័គ្រចិត្តដើម្បីសហគមន៍ខ្ញុំ • ក្រាហ្វសសរ និងអាយុចៃដន្យ (១៩-៤០ ឆ្នាំ)";
-                badge.textContent = isSaved ? "ទិន្នន័យគំរូ (បានរក្សាទុក)" : "ទិន្នន័យគំរូ";
+                badge.textContent = isSaved ? "ទិន្នន័យគំរូ (លើ Cloud)" : "ទិន្នន័យគំរូ";
                 badge.className = "px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600";
             }
         }
 
-        // Save current dataset into localStorage so it stays permanently
-        function saveDataToBrowser() {
+        // Save current dataset into Cloud so anyone opening the link sees it
+        async function saveDataToCloud(isAuto = false) {
+            if (!db || !currentUser) {
+                showToast("ប្រព័ន្ធកំពុងភ្ជាប់អ៊ីនធឺណិត សូមរង់ចាំបន្តិចរួចចុចម្តងទៀត!");
+                return;
+            }
             try {
-                const payload = {
-                    youthData,
-                    originalHeaders,
+                updateBannerStatus(currentFileName, isRealData, false);
+                const sharedDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'volunteer_dashboard', 'latest_dataset');
+                await setDoc(sharedDocRef, {
+                    youthDataJson: JSON.stringify(youthData),
+                    originalHeadersJson: JSON.stringify(originalHeaders),
                     currentFileName,
                     isRealData,
-                    savedAt: new Date().toISOString()
-                };
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+                    updatedAt: new Date().toISOString()
+                });
                 updateBannerStatus(currentFileName, isRealData, true);
-                showToast(`បានរក្សាទុកទិន្នន័យ (${youthData.length} នាក់) ជាប់ក្នុងប្រព័ន្ធដោយជោគជ័យ!`);
-            } catch (err) {
-                console.error(err);
-                showToast("មិនអាចរក្សាទុកបានទេ (ទំហំឯកសារធំពេក)!");
-            }
-        }
-
-        // Load saved dataset from localStorage if available
-        function loadSavedDataFromBrowser() {
-            try {
-                const raw = localStorage.getItem(STORAGE_KEY);
-                if (raw) {
-                    const parsed = JSON.parse(raw);
-                    if (parsed && Array.isArray(parsed.youthData) && parsed.youthData.length > 0) {
-                        youthData = parsed.youthData;
-                        originalHeaders = parsed.originalHeaders || originalHeaders;
-                        currentFileName = parsed.currentFileName || "ឯកសារដែលបានរក្សាទុក";
-                        isRealData = parsed.isRealData !== undefined ? parsed.isRealData : true;
-                        updateBannerStatus(currentFileName, isRealData, true);
-                        return true;
-                    }
+                if (isAuto) {
+                    showToast(`បានផ្ទុក និងរក្សាទុកទិន្នន័យ (${youthData.length} នាក់) លើ Cloud រួចរាល់!`);
+                } else {
+                    showToast(`បានរក្សាទុកទិន្នន័យ (${youthData.length} នាក់) លើ Cloud! គ្រូអាចបើកមើលឃើញភ្លាមៗ`);
                 }
             } catch (err) {
-                console.error("Failed to load saved data:", err);
+                console.error(err);
+                showToast("មានបញ្ហាក្នុងការរក្សាទុកលើ Cloud!");
             }
-            return false;
         }
 
         // Handle File Upload (.csv or .zip)
@@ -819,10 +860,17 @@
         });
 
         // Event Listeners for interactive controls
-        document.getElementById('saveDataBtn').addEventListener('click', saveDataToBrowser);
+        document.getElementById('saveDataBtn').addEventListener('click', () => saveDataToCloud(false));
 
-        document.getElementById('resetDataBtn').addEventListener('click', () => {
-            localStorage.removeItem(STORAGE_KEY);
+        document.getElementById('resetDataBtn').addEventListener('click', async () => {
+            if (db && currentUser) {
+                try {
+                    const sharedDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'volunteer_dashboard', 'latest_dataset');
+                    await deleteDoc(sharedDocRef);
+                } catch (e) {
+                    console.error(e);
+                }
+            }
             youthData = [...defaultYouthData];
             originalHeaders = ["ឈ្មោះ", "ភេទ", "ភូមិ", "ឃុំ", "ស្រុក"];
             currentFileName = "ទិន្នន័យគំរូ";
@@ -831,13 +879,13 @@
             assignRandomAges();
             updateBannerStatus(currentFileName, false, false);
             updateDashboard();
-            showToast("បានសម្អាត និងត្រឡប់ទៅទិន្នន័យគំរូដើមវិញ!");
+            showToast("បានសម្អាតទិន្នន័យលើ Cloud និងត្រឡប់ទៅទិន្នន័យគំរូដើមវិញ!");
         });
 
         document.getElementById('randomizeBtn').addEventListener('click', () => {
             assignRandomAges();
             updateDashboard();
-            showToast("បាន Random អាយុថ្មី (១៩ - ៤០ ឆ្នាំ) រួចរាល់!");
+            saveDataToCloud(true);
         });
 
         document.getElementById('chartLimit').addEventListener('change', renderCharts);
@@ -846,11 +894,9 @@
 
         // Initialize on page load
         window.addEventListener('DOMContentLoaded', () => {
-            const hasSaved = loadSavedDataFromBrowser();
-            if (!hasSaved) {
-                assignRandomAges();
-            }
+            assignRandomAges();
             updateDashboard();
+            initCloudSync();
         });
     </script>
 </body>
